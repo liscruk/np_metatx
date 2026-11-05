@@ -4,51 +4,43 @@ import os
 import sys
 import re
 
-RESULTS = config["results"]
-SAMPLES = config["samples"]
-SPECIES = config["species"]
-REFNAME = SPECIES[0]+"."+SPECIES[1]
-MODE = config.get("mode", "canonical").lower()
+from snakemake.utils import validate
 
-if MODE not in ("canonical", "novel", "both"):
-	sys.exit("Unknown mode '" + MODE + "'. Use Canonical, Novel or Both.")
+# Old configs used hg38Seq/hg38Gtf/hg38Tx; point them at the new names instead of a schema error
+if any(k in config for k in ("hg38Seq", "hg38Gtf", "hg38Tx")):
+	sys.exit("Config keys hg38Seq/hg38Gtf/hg38Tx were renamed to hostSeq/hostGtf/hostTx. Please update your config.")
 
-# Get reference of human (if human is involved)
-refHuman = config["hg38Seq"]
-anHuman = config["hg38Gtf"]
-txHuman = config["hg38Tx"]
+# Checks keys and types and fills defaults (threads, mode)
+validate(config, "schemas/config.schema.yaml")
 
-# Get reference of Xeno or Meta organism
-refXeno = config["XenoSeq"]
-anXeno = config["XenoGtf"]
-txXeno = config["XenoTx"]
-
-
-# {sample} may only match sample names from the config
-wildcard_constraints:
-	sample = "|".join(re.escape(s) for s in SAMPLES)
+# Settings, paths, wildcard constraints and reference file checks
+include: "rules/common.smk"
 
 # Each branch defines its own target list (CANONICAL_TARGETS / NOVEL_TARGETS)
-output = list()
+TARGETS = list()
 
 if MODE in ("canonical", "both"):
 	include: "rules/canonical.smk"
-	output += CANONICAL_TARGETS
+	TARGETS += CANONICAL_TARGETS
 
 if MODE in ("novel", "both"):
 	include: "rules/novel.smk"
-	output += NOVEL_TARGETS
+	TARGETS += NOVEL_TARGETS
 
 # Species composition (reads per species + ratio) for whichever branches run
 include: "rules/species.smk"
-output += SPECIES_TARGETS
+TARGETS += SPECIES_TARGETS
+
+# Read QC (seqkit), flagstat and the MultiQC report
+include: "rules/qc.smk"
+TARGETS += QC_TARGETS
 
 
 # Prep output with rule all
 rule all:
 	default_target: True
 	input:
-		output
+		TARGETS
 
 ### Builds the hybrid references used by both branches.
 ### Inputs may be plain or gzipped. Genome contigs and GTF seqnames are prefixed with the
@@ -57,36 +49,42 @@ rule all:
 rule makeRef:
 	input:
 		# Host reference fasta
-		hr = refHuman,
+		hr = HOST_SEQ,
 		# Host reference annotation gtf
-		ha = anHuman,
+		ha = HOST_GTF,
 		# Host reference transcriptome fasta
-		hx = txHuman,
+		hx = HOST_TX,
 		# Xeno or pathogen genome fasta
-		xr = refXeno,
+		xr = XENO_SEQ,
 		# Xeno or pathogen gtf NOT gff3
-		xa = anXeno,
+		xa = XENO_GTF,
 		# Xeno or pathogen transcripts fasta
-		xx = txXeno
+		xx = XENO_TX
 	output:
-		rHyb = RESULTS + "refs/Hybrid_genome." + REFNAME + ".fa",
-		rFai = RESULTS + "refs/Hybrid_genome." + REFNAME + ".fa.fai",
-		anHyb = RESULTS + "refs/Hybrid_annotation." + REFNAME + ".gtf",
-		txHyb = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
+		rHyb = HYB_GENOME,
+		rFai = HYB_FAI,
+		anHyb = HYB_GTF,
+		txHyb = HYB_TX
 	params:
 		hs = SPECIES[0],
 		xs = SPECIES[1]
+	log:
+		f"{LOGS}makeRef.log"
+	benchmark:
+		f"{BENCH}makeRef.tsv"
 	conda:
 		"envs/mapping.yaml"
 	shell:"""
 		dc() {{ case "$1" in *.gz) gzip -dc "$1" ;; *) cat "$1" ;; esac; }}
-		pfa() {{ awk -v p="$1_" '/^>/{{sub(/^>/, ">" p)}} 1'; }}
+		pfa() {{ awk -v p="$1_" 'substr($0, 1, 1) == ">" {{$0 = ">" p substr($0, 2)}} 1'; }}
 		pgtf() {{ awk -v p="$1_" 'BEGIN{{FS=OFS="\t"}} !/^#/{{$1 = p $1; print}}'; }}
 
+		{{
 		{{ dc {input.hr} | pfa {params.hs}; dc {input.xr} | pfa {params.xs}; }} > {output.rHyb}
 		samtools faidx {output.rHyb}
 
 		{{ dc {input.hx}; dc {input.xx}; }} > {output.txHyb}
 
 		{{ dc {input.ha} | pgtf {params.hs}; dc {input.xa} | pgtf {params.xs}; }} > {output.anHyb}
+		}} 2> {log}
 	"""

@@ -4,7 +4,7 @@ channels:
   - bioconda
   - nodefaults
 dependencies:
-  - samtools=1.21
+  - samtools=1.22.1
   - python=3.12
   - pandas>=2.2
   - matplotlib>=3.9

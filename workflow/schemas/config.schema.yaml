@@ -1,0 +1,73 @@
+$schema: "http://json-schema.org/draft-07/schema#"
+description: np_metatx run configuration (see config/config.default.yml)
+type: object
+
+properties:
+  experiment:
+    type: string
+    description: free-text run name
+  results:
+    type: string
+    pattern: "/$"
+    description: output directory, must end with a slash
+  threads:
+    type: integer
+    minimum: 1
+    default: 8
+  species:
+    type: array
+    description: host tag first, xeno/pathogen tag second (used as contig prefixes, e.g. hs_chr1)
+    items:
+      type: string
+      pattern: "^[A-Za-z0-9]+$"
+    minItems: 2
+    maxItems: 2
+    uniqueItems: true
+  mode:
+    type: string
+    pattern: "^(?i:canonical|novel|both)$"
+    default: "Canonical"
+  hostSeq:
+    type: string
+    minLength: 1
+    description: host genome FASTA (plain or gzipped)
+  hostGtf:
+    type: string
+    minLength: 1
+    description: host annotation GTF (not GFF3)
+  hostTx:
+    type: string
+    minLength: 1
+    description: host transcriptome FASTA
+  XenoSeq:
+    type: string
+    minLength: 1
+    description: xeno/pathogen genome FASTA
+  XenoGtf:
+    type: string
+    minLength: 1
+    description: xeno/pathogen annotation GTF (not GFF3)
+  XenoTx:
+    type: string
+    minLength: 1
+    description: xeno/pathogen transcriptome FASTA
+  samples:
+    type: object
+    description: sample name -> reads file (FASTQ, plain or gzipped)
+    minProperties: 1
+    propertyNames:
+      pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    additionalProperties:
+      type: string
+      minLength: 1
+
+required:
+  - results
+  - species
+  - hostSeq
+  - hostGtf
+  - hostTx
+  - XenoSeq
+  - XenoGtf
+  - XenoTx
+  - samples

@@ -19,9 +19,9 @@ mode: "Canonical"
 
 ### INPUTS ###
 # Host reference (genome fasta, GTF, transcriptome fasta)
-hg38Seq: "/path/to/GRCh38.primary_assembly.genome.fa"
-hg38Gtf: "/path/to/gencode.vXX.annotation.gtf"
-hg38Tx:  "/path/to/gencode.vXX.transcripts.fa"
+hostSeq: "/path/to/GRCh38.primary_assembly.genome.fa"
+hostGtf: "/path/to/gencode.vXX.annotation.gtf"
+hostTx:  "/path/to/gencode.vXX.transcripts.fa"
 
 # Xeno / pathogen reference (GTF, not GFF3)
 XenoSeq: "/path/to/xeno.genome.fa"

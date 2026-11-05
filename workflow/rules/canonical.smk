@@ -1,20 +1,43 @@
 ### Canonical branch: competitive mapping against the hybrid transcriptome + salmon quantification
 
-CANONICAL_TARGETS = [RESULTS+"counts/tx/numreads.tsv", RESULTS+"counts/tx/tpm.tsv"] + \
-	expand(RESULTS+"bam/tx/{sample}.txt", sample = SAMPLES)
+CANONICAL_TARGETS = [
+	f"{RESULTS}counts/tx/numreads.tsv",
+	f"{RESULTS}counts/tx/tpm.tsv",
+]
 
-### Canonical workflow perform competetive hybrid mapping on a hybrid reference generated per run.
-### If you stick to the model it might make sense to keep the reference stable. 
+### minimap2 index of the hybrid transcriptome, built once instead of in every mapping job.
+### The index stores the preset's k-mer settings, so it is built with the same preset (map-ont)
+### used for mapping. -I 16G keeps it in one part: multi-part indexes give wrong secondaries/MAPQ.
+rule indexTranscriptome:
+	input:
+		HYB_TX
+	output:
+		HYB_TX_MMI
+	threads:
+		THREADS
+	log:
+		f"{LOGS}indexTranscriptome.log"
+	benchmark:
+		f"{BENCH}indexTranscriptome.tsv"
+	conda:
+		"../envs/mapping.yaml"
+	shell:
+		"minimap2 -t {threads} -x map-ont -I 16G -d {output} {input} 2> {log}"
+
+### Competitive mapping of each sample against the hybrid transcriptome.
+### If you stick to the model it might make sense to keep the reference stable.
 rule mapping:
 	input:
-		reads = lambda wildcards: config["samples"][wildcards.sample],
-		ref = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
+		reads = lambda wildcards: SAMPLES[wildcards.sample],
+		idx = HYB_TX_MMI
 	output:
-		bam = RESULTS+"bam/tx/{sample}.bam"
+		bam = f"{RESULTS}bam/tx/{{sample}}.bam"
 	threads:
-		config["threads"]
-	params:
-		ref = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
+		THREADS
+	log:
+		f"{LOGS}mapping/{{sample}}.log"
+	benchmark:
+		f"{BENCH}mapping/{{sample}}.tsv"
 	conda:
 		"../envs/mapping.yaml"
 
@@ -22,50 +45,50 @@ rule mapping:
 	# records with the same read name into one alignment group. -N 100 keeps all competing
 	# isoforms/orthologues as candidates (default -N 5 truncates them).
 	shell:"""
-		minimap2 -t {threads} -ax map-ont -N 100 --eqx -I 16G {params.ref} {input.reads} | \
+		{{
+		minimap2 -t {threads} -ax map-ont -N 100 --eqx {input.idx} {input.reads} | \
 		samtools view -b -o {output.bam} -
+		}} 2> {log}
 	"""
-### Simple mapping statistics gathering. With -N 100, use the 'primary mapped' line for map rates.
-rule flagstat:
-	input:
-		bam = RESULTS+"bam/tx/{sample}.bam"
-	output:
-		stat = RESULTS+"bam/tx/{sample}.txt"
-	conda:
-		"../envs/mapping.yaml"
-	
-	shell:"""
-		samtools flagstat {input.bam} > {output.stat};
-	"""
-### Generation quantifcation by salmon for seperate mapping
+
+### Quantification by salmon for each sample
 rule salmonQuant:
 	input:
-		bam = RESULTS+"bam/tx/{sample}.bam",
-		trp = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
+		bam = f"{RESULTS}bam/tx/{{sample}}.bam",
+		tx = HYB_TX
 	output:
-		trp_quant = RESULTS+"counts/{sample}/quant.sf",
-		trp_dir = directory(RESULTS+"counts/{sample}/")
+		quant = f"{RESULTS}counts/{{sample}}/quant.sf"
+	params:
+		outdir = lambda wildcards, output: os.path.dirname(output.quant)
 	threads:
-		config["threads"]
+		THREADS
+	log:
+		f"{LOGS}salmonQuant/{{sample}}.log"
+	benchmark:
+		f"{BENCH}salmonQuant/{{sample}}.tsv"
 	conda:
 		"../envs/salmon.yaml"
 	# --ont: salmon's ONT alignment model (undocumented on readthedocs, listed in
 	# `salmon quant --help-alignment`); uses alignment errors/clipping instead of ignoring them.
 	shell:
-		"salmon quant --ont -p {threads} -l U -t {input.trp} -a {input.bam} -o {output.trp_dir}"
+		"salmon quant --ont -p {threads} -l U -t {input.tx} -a {input.bam} -o {params.outdir} > {log} 2>&1"
 
 ### Merge per-sample quantifications: estimated read counts (for DE) and TPM
 rule salmonMerge:
 	input:
-		dirs = expand(RESULTS+"counts/{sample}/", sample=SAMPLES)
+		quants = expand(f"{RESULTS}counts/{{sample}}/quant.sf", sample = SAMPLES)
 	output:
-		counts = RESULTS+"counts/tx/numreads.tsv",
-		tpm = RESULTS+"counts/tx/tpm.tsv"
+		counts = f"{RESULTS}counts/tx/numreads.tsv",
+		tpm = f"{RESULTS}counts/tx/tpm.tsv"
+	params:
+		dirs = lambda wildcards, input: " ".join(os.path.dirname(q) for q in input.quants)
+	log:
+		f"{LOGS}salmonMerge.log"
 	conda:
 		"../envs/salmon.yaml"
 	shell:"""
-		salmon quantmerge --quants {input.dirs} --column numreads --output {output.counts};
-		salmon quantmerge --quants {input.dirs} --column tpm --output {output.tpm};
+		{{
+		salmon quantmerge --quants {params.dirs} --column numreads --output {output.counts}
+		salmon quantmerge --quants {params.dirs} --column tpm --output {output.tpm}
+		}} > {log} 2>&1
 	"""
-
-

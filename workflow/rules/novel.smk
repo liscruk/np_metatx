@@ -3,77 +3,98 @@
 ### 2. Pool all samples and build one isoform set with `flair transcriptome` (FLAIR >= 3.0)
 ### 3. Quantify every sample against that common isoform set with `flair quantify`
 
-HYB_GENOME = RESULTS + "refs/Hybrid_genome." + REFNAME + ".fa"
-HYB_GTF = RESULTS + "refs/Hybrid_annotation." + REFNAME + ".gtf"
-FLAIR_PREFIX = RESULTS + "flair/" + REFNAME
+FLAIR_PREFIX = f"{RESULTS}flair/{REFNAME}"
 
-NOVEL_TARGETS = expand(RESULTS+"bam/gn/{sample}.txt", sample = SAMPLES) + [
-	FLAIR_PREFIX + ".isoforms.gtf",
-	FLAIR_PREFIX + ".quant.counts.tsv",
-	FLAIR_PREFIX + ".quant.tpm.tsv"
+NOVEL_TARGETS = [
+	f"{FLAIR_PREFIX}.isoforms.gtf",
+	f"{FLAIR_PREFIX}.quant.counts.tsv",
+	f"{FLAIR_PREFIX}.quant.tpm.tsv",
 ]
+
+### minimap2 index of the hybrid genome, built once instead of in every mapping job.
+### Built with the splice preset so its k-mer settings match the spliced mapping below.
+### -I 16G keeps the human + xeno genome in one index part.
+rule indexGenome:
+	input:
+		HYB_GENOME
+	output:
+		HYB_GENOME_MMI
+	threads:
+		THREADS
+	log:
+		f"{LOGS}indexGenome.log"
+	benchmark:
+		f"{BENCH}indexGenome.tsv"
+	conda:
+		"../envs/mapping.yaml"
+	shell:
+		"minimap2 -t {threads} -x splice -I 16G -d {output} {input} 2> {log}"
 
 ### Spliced alignment against the hybrid genome (parameters as recommended by FLAIR)
 rule minimap2splice:
 	input:
-		reads = lambda wildcards: config["samples"][wildcards.sample],
-		ref = HYB_GENOME
+		reads = lambda wildcards: SAMPLES[wildcards.sample],
+		idx = HYB_GENOME_MMI
 	output:
-		bam = RESULTS+"bam/gn/{sample}.bam",
-		bai = RESULTS+"bam/gn/{sample}.bam.bai"
+		bam = f"{RESULTS}bam/gn/{{sample}}.bam",
+		bai = f"{RESULTS}bam/gn/{{sample}}.bam.bai"
 	threads:
-		config["threads"]
+		THREADS
+	log:
+		f"{LOGS}minimap2splice/{{sample}}.log"
+	benchmark:
+		f"{BENCH}minimap2splice/{{sample}}.tsv"
 	conda:
 		"../envs/mapping.yaml"
 	shell:"""
-		minimap2 -t {threads} -ax splice -s 80 -G 200k --secondary=no {input.ref} {input.reads} | \
+		{{
+		minimap2 -t {threads} -ax splice -s 80 -G 200k --secondary=no {input.idx} {input.reads} | \
 		samtools sort -@ {threads} -o {output.bam} -
 		samtools index {output.bam}
-	"""
-
-### Mapping statistics for genomic mapping
-rule flagstatGenomic:
-	input:
-		bam = RESULTS+"bam/gn/{sample}.bam"
-	output:
-		stat = RESULTS+"bam/gn/{sample}.txt"
-	conda:
-		"../envs/mapping.yaml"
-	shell:"""
-		samtools flagstat {input.bam} > {output.stat}
+		}} 2> {log}
 	"""
 
 ### Pool all samples so isoforms are discovered once across the whole experiment
 rule mergeGenomic:
 	input:
-		bams = expand(RESULTS+"bam/gn/{sample}.bam", sample = SAMPLES)
+		bams = expand(f"{RESULTS}bam/gn/{{sample}}.bam", sample = SAMPLES)
 	output:
-		bam = RESULTS+"flair/merged.bam",
-		bai = RESULTS+"flair/merged.bam.bai"
+		bam = f"{RESULTS}flair/merged.bam",
+		bai = f"{RESULTS}flair/merged.bam.bai"
 	threads:
-		config["threads"]
+		THREADS
+	log:
+		f"{LOGS}mergeGenomic.log"
+	benchmark:
+		f"{BENCH}mergeGenomic.tsv"
 	conda:
 		"../envs/mapping.yaml"
 	shell:"""
+		{{
 		samtools merge -f -@ {threads} -o {output.bam} {input.bams}
 		samtools index {output.bam}
+		}} 2> {log}
 	"""
 
 ### Isoform discovery (correct + collapse in one step)
 rule flairTranscriptome:
 	input:
-		bam = RESULTS+"flair/merged.bam",
-		bai = RESULTS+"flair/merged.bam.bai",
+		bam = f"{RESULTS}flair/merged.bam",
+		bai = f"{RESULTS}flair/merged.bam.bai",
 		genome = HYB_GENOME,
 		gtf = HYB_GTF
 	output:
-		bed = FLAIR_PREFIX + ".isoforms.bed",
-		gtf = FLAIR_PREFIX + ".isoforms.gtf",
-		fa = FLAIR_PREFIX + ".isoforms.fa"
+		bed = f"{FLAIR_PREFIX}.isoforms.bed",
+		gtf = f"{FLAIR_PREFIX}.isoforms.gtf",
+		fa = f"{FLAIR_PREFIX}.isoforms.fa"
 	params:
 		prefix = FLAIR_PREFIX
 	threads:
-		config["threads"]
+		THREADS
+	log:
+		f"{LOGS}flairTranscriptome.log"
+	benchmark:
+		f"{BENCH}flairTranscriptome.tsv"
 	conda:
 		"../envs/flair.yaml"
 	shell:"""
@@ -82,42 +103,50 @@ rule flairTranscriptome:
 		-f {input.gtf} \
 		-t {threads} \
 		--stringent \
-		-o {params.prefix}
+		-o {params.prefix} > {log} 2>&1
 	"""
 
 ### Reads manifest for flair quantify: sample, condition, batch, reads
 ### Condition/batch are placeholders; --sample_id_only keeps the sample names as column headers.
 rule flairManifest:
 	output:
-		manifest = RESULTS + "flair/reads_manifest.tsv"
+		manifest = f"{RESULTS}flair/reads_manifest.tsv"
+	log:
+		f"{LOGS}flairManifest.log"
 	run:
 		with open(output.manifest, "w") as fh:
 			for s, fq in SAMPLES.items():
 				fh.write(f"{s}\tcond\tbatch1\t{fq}\n")
+		with open(log[0], "w") as fh:
+			fh.write(f"Wrote {len(SAMPLES)} samples to {output.manifest}\n")
 
 ### Quantify each sample against the common isoform set
 rule flairQuantify:
 	input:
-		manifest = RESULTS + "flair/reads_manifest.tsv",
-		fa = FLAIR_PREFIX + ".isoforms.fa",
-		bed = FLAIR_PREFIX + ".isoforms.bed"
+		manifest = f"{RESULTS}flair/reads_manifest.tsv",
+		fa = f"{FLAIR_PREFIX}.isoforms.fa",
+		bed = f"{FLAIR_PREFIX}.isoforms.bed"
 	output:
-		counts = FLAIR_PREFIX + ".quant.counts.tsv",
-		tpm = FLAIR_PREFIX + ".quant.tpm.tsv"
+		counts = f"{FLAIR_PREFIX}.quant.counts.tsv",
+		tpm = f"{FLAIR_PREFIX}.quant.tpm.tsv"
 	params:
-		prefix = FLAIR_PREFIX + ".quant",
-		tmp = RESULTS + "flair/tmp"
+		prefix = f"{FLAIR_PREFIX}.quant",
+		tmp = f"{RESULTS}flair/tmp"
 	threads:
-		config["threads"]
+		THREADS
+	log:
+		f"{LOGS}flairQuantify.log"
+	benchmark:
+		f"{BENCH}flairQuantify.tsv"
 	conda:
 		"../envs/flair.yaml"
 	shell:"""
 		flair quantify -r {input.manifest} \
-		-i {input.fa} \
 		--isoform_bed {input.bed} \
+		-i {input.fa} \
 		--sample_id_only \
 		--tpm \
 		--temp_dir {params.tmp} \
 		-t {threads} \
-		-o {params.prefix}
+		-o {params.prefix} > {log} 2>&1
 	"""

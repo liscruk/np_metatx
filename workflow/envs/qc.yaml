@@ -1,0 +1,8 @@
+name: metatx-qc
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - seqkit=2.10.1
+  - multiqc=1.33
