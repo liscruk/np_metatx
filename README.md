@@ -55,7 +55,7 @@ snakemake -s workflow/snakefile \
 ```
 refs/Hybrid_genome.<hs.xx>.fa(.fai)    concatenated genomes, contigs prefixed with species tag
 refs/Hybrid_annotation.<hs.xx>.gtf     concatenated annotations (same prefixes)
-refs/Hybrd_transcriptome.<hs.xx>.fa    concatenated transcriptomes
+refs/Hybrid_transcriptome.<hs.xx>.fa    concatenated transcriptomes
 
 # Canonical
 bam/tx/<sample>.bam / .txt             transcriptome alignments + flagstat

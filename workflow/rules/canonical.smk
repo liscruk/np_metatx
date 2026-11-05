@@ -8,13 +8,13 @@ CANONICAL_TARGETS = [RESULTS+"counts/tx/numreads.tsv", RESULTS+"counts/tx/tpm.ts
 rule mapping:
 	input:
 		reads = lambda wildcards: config["samples"][wildcards.sample],
-		ref = RESULTS + "refs/Hybrd_transcriptome." + REFNAME + ".fa"
+		ref = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
 	output:
 		bam = RESULTS+"bam/tx/{sample}.bam"
 	threads:
 		config["threads"]
 	params:
-		ref = RESULTS + "refs/Hybrd_transcriptome." + REFNAME + ".fa"
+		ref = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
 	conda:
 		"../envs/mapping.yaml"
 
@@ -41,7 +41,7 @@ rule flagstat:
 rule salmonQuant:
 	input:
 		bam = RESULTS+"bam/tx/{sample}.bam",
-		trp = RESULTS + "refs/Hybrd_transcriptome." + REFNAME + ".fa"
+		trp = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
 	output:
 		trp_quant = RESULTS+"counts/{sample}/quant.sf",
 		trp_dir = directory(RESULTS+"counts/{sample}/")

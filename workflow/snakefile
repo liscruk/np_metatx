@@ -72,7 +72,7 @@ rule makeRef:
 		rHyb = RESULTS + "refs/Hybrid_genome." + REFNAME + ".fa",
 		rFai = RESULTS + "refs/Hybrid_genome." + REFNAME + ".fa.fai",
 		anHyb = RESULTS + "refs/Hybrid_annotation." + REFNAME + ".gtf",
-		txHyb = RESULTS + "refs/Hybrd_transcriptome." + REFNAME + ".fa"
+		txHyb = RESULTS + "refs/Hybrid_transcriptome." + REFNAME + ".fa"
 	params:
 		hs = SPECIES[0],
 		xs = SPECIES[1]
