@@ -33,6 +33,10 @@ HYB_TX = f"{RESULTS}refs/Hybrid_transcriptome.{REFNAME}.fa"
 HYB_GENOME_MMI = f"{RESULTS}refs/Hybrid_genome.{REFNAME}.splice.mmi"
 HYB_TX_MMI = f"{RESULTS}refs/Hybrid_transcriptome.{REFNAME}.map-ont.mmi"
 
+### Transcript quantification (canonical branch): one subdirectory per quantifier
+SALMON_DIR = f"{RESULTS}counts/salmon/"
+OARFISH_DIR = f"{RESULTS}counts/oarfish/"
+
 # {sample} may only match sample names from the config, {space} only tx/gn
 wildcard_constraints:
 	sample = "|".join(re.escape(s) for s in SAMPLES),

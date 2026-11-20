@@ -1,8 +1,13 @@
-### Canonical branch: competitive mapping against the hybrid transcriptome + salmon quantification
+### Canonical branch: competitive mapping against the hybrid transcriptome, quantified in
+### parallel by salmon and oarfish from the same alignments. Output per quantifier:
+###   counts/salmon/   <sample>/quant.sf, numreads.tsv, tpm.tsv
+###   counts/oarfish/  <sample>.quant (+ .meta_info.json), numreads.tsv, tpm.tsv
 
 CANONICAL_TARGETS = [
-	f"{RESULTS}counts/tx/numreads.tsv",
-	f"{RESULTS}counts/tx/tpm.tsv",
+	f"{SALMON_DIR}numreads.tsv",
+	f"{SALMON_DIR}tpm.tsv",
+	f"{OARFISH_DIR}numreads.tsv",
+	f"{OARFISH_DIR}tpm.tsv",
 ]
 
 ### minimap2 index of the hybrid transcriptome, built once instead of in every mapping job.
@@ -41,8 +46,8 @@ rule mapping:
 	conda:
 		"../envs/mapping.yaml"
 
-	# Output must stay in minimap2 read order (NOT coordinate-sorted): salmon groups consecutive
-	# records with the same read name into one alignment group. -N 100 keeps all competing
+	# Output must stay in minimap2 read order (NOT coordinate-sorted): salmon and oarfish group
+	# consecutive records with the same read name into one alignment group. -N 100 keeps all competing
 	# isoforms/orthologues as candidates (default -N 5 truncates them).
 	shell:"""
 		{{
@@ -57,7 +62,7 @@ rule salmonQuant:
 		bam = f"{RESULTS}bam/tx/{{sample}}.bam",
 		tx = HYB_TX
 	output:
-		quant = f"{RESULTS}counts/{{sample}}/quant.sf"
+		quant = f"{SALMON_DIR}{{sample}}/quant.sf"
 	params:
 		outdir = lambda wildcards, output: os.path.dirname(output.quant)
 	threads:
@@ -73,13 +78,13 @@ rule salmonQuant:
 	shell:
 		"salmon quant --ont -p {threads} -l U -t {input.tx} -a {input.bam} -o {params.outdir} > {log} 2>&1"
 
-### Merge per-sample quantifications: estimated read counts (for DE) and TPM
+### Merge per-sample salmon quantifications: estimated read counts (for DE) and TPM
 rule salmonMerge:
 	input:
-		quants = expand(f"{RESULTS}counts/{{sample}}/quant.sf", sample = SAMPLES)
+		quants = expand(f"{SALMON_DIR}{{sample}}/quant.sf", sample = SAMPLES)
 	output:
-		counts = f"{RESULTS}counts/tx/numreads.tsv",
-		tpm = f"{RESULTS}counts/tx/tpm.tsv"
+		counts = f"{SALMON_DIR}numreads.tsv",
+		tpm = f"{SALMON_DIR}tpm.tsv"
 	params:
 		dirs = lambda wildcards, input: " ".join(os.path.dirname(q) for q in input.quants)
 	log:
@@ -91,4 +96,49 @@ rule salmonMerge:
 		salmon quantmerge --quants {params.dirs} --column numreads --output {output.counts}
 		salmon quantmerge --quants {params.dirs} --column tpm --output {output.tpm}
 		}} > {log} 2>&1
+	"""
+
+### Quantification by oarfish for each sample (alignment mode, same BAM as salmon).
+### --model-coverage models where reads land on a transcript, which helps with 5'-truncated ONT reads.
+### Filters are pinned to oarfish 0.13 defaults so results don't shift if the defaults change:
+### alignments need >= 95% of the read's best score (-s), >= 50% of the read (-m) and >= 50 nt (-l) aligned.
+rule oarfishQuant:
+	input:
+		bam = f"{RESULTS}bam/tx/{{sample}}.bam"
+	output:
+		quant = f"{OARFISH_DIR}{{sample}}.quant",
+		meta = f"{OARFISH_DIR}{{sample}}.meta_info.json"
+	params:
+		prefix = f"{OARFISH_DIR}{{sample}}"
+	threads:
+		THREADS
+	log:
+		f"{LOGS}oarfishQuant/{{sample}}.log"
+	benchmark:
+		f"{BENCH}oarfishQuant/{{sample}}.tsv"
+	conda:
+		"../envs/oarfish.yaml"
+	shell:
+		"oarfish -a {input.bam} -o {params.prefix} -j {threads} --model-coverage -s 0.95 -m 0.5 -l 50 > {log} 2>&1"
+
+### Merge per-sample oarfish quantifications into the same layout as salmon (numreads.tsv, tpm.tsv)
+### and write a MultiQC table from oarfish's meta_info.json (MultiQC has no oarfish module).
+rule oarfishMerge:
+	input:
+		quants = expand(f"{OARFISH_DIR}{{sample}}.quant", sample = SAMPLES),
+		metas = expand(f"{OARFISH_DIR}{{sample}}.meta_info.json", sample = SAMPLES)
+	output:
+		counts = f"{OARFISH_DIR}numreads.tsv",
+		tpm = f"{OARFISH_DIR}tpm.tsv",
+		mqc = f"{RESULTS}qc/oarfish/oarfish_mqc.tsv"
+	params:
+		script = os.path.join(SCRIPTS, "oarfish_merge.py"),
+		samples = " ".join(SAMPLES)
+	log:
+		f"{LOGS}oarfishMerge.log"
+	conda:
+		"../envs/species.yaml"
+	shell:"""
+		python {params.script} --quants {input.quants} --meta {input.metas} --samples {params.samples} \
+			--counts {output.counts} --tpm {output.tpm} --mqc {output.mqc} > {log} 2>&1
 	"""

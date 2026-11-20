@@ -1,5 +1,5 @@
 ### Species composition: reads per species and the ratio between them, per mapping space.
-###   tx = hybrid transcriptome BAMs (canonical branch), also reports the salmon EM split
+###   tx = hybrid transcriptome BAMs (canonical branch), also reports the salmon and oarfish EM splits
 ###   gn = hybrid genome BAMs (novel branch)
 ### Each read is assigned by its primary alignment; reads with primary/secondary hits in both
 ### species are additionally counted as cross-species ambiguous (needs secondaries in the BAM:
@@ -82,7 +82,8 @@ rule speciesCounts:
 rule speciesSummary:
 	input:
 		counts = expand(f"{RESULTS}species/{{space}}/{{sample}}.counts.tsv", sample = SAMPLES, allow_missing = True),
-		salmon = lambda w: expand(f"{RESULTS}counts/{{sample}}/quant.sf", sample = SAMPLES) if w.space == "tx" else [],
+		salmon = lambda w: expand(f"{SALMON_DIR}{{sample}}/quant.sf", sample = SAMPLES) if w.space == "tx" else [],
+		oarfish = lambda w: expand(f"{OARFISH_DIR}{{sample}}.quant", sample = SAMPLES) if w.space == "tx" else [],
 		txmap = lambda w: f"{RESULTS}refs/tx2species.{REFNAME}.tsv" if w.space == "tx" else []
 	output:
 		tsv = f"{RESULTS}species/{{space}}/species_summary.tsv",
@@ -91,7 +92,8 @@ rule speciesSummary:
 	params:
 		script = os.path.join(SCRIPTS, "species_summary.py"),
 		species = " ".join(SPECIES),
-		salmon = lambda w, input: f"--salmon {' '.join(input.salmon)} --txmap {input.txmap}" if w.space == "tx" else "",
+		em = lambda w, input: (f"--salmon {' '.join(input.salmon)} --oarfish {' '.join(input.oarfish)} "
+			f"--txmap {input.txmap}") if w.space == "tx" else "",
 		title = lambda w: "Species composition - " + ("transcriptome (tx)" if w.space == "tx" else "genome (gn)"),
 		prefix = f"{RESULTS}species/{{space}}/species_composition"
 	log:
@@ -99,6 +101,6 @@ rule speciesSummary:
 	conda:
 		"../envs/species.yaml"
 	shell:"""
-		python {params.script} --counts {input.counts} --species {params.species} {params.salmon} \
+		python {params.script} --counts {input.counts} --species {params.species} {params.em} \
 			--title "{params.title}" --tsv {output.tsv} --plot {params.prefix} > {log} 2>&1
 	"""

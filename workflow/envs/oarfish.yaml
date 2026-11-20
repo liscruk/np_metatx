@@ -1,0 +1,7 @@
+name: metatx-oarfish
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - oarfish=0.13.0

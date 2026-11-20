@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge per-sample species counts, add ratios (and salmon-based estimates), and plot."""
+"""Merge per-sample species counts, add ratios (and salmon/oarfish EM estimates), and plot."""
 import argparse
 import math
 import os
@@ -14,7 +14,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--counts", nargs="+", required=True)
 ap.add_argument("--species", nargs=2, required=True, metavar=("HOST", "XENO"))
 ap.add_argument("--salmon", nargs="*", default=[], help="quant.sf files, same order as --counts")
-ap.add_argument("--txmap", help="transcript -> species TSV (needed with --salmon)")
+ap.add_argument("--oarfish", nargs="*", default=[], help="oarfish .quant files, same order as --counts")
+ap.add_argument("--txmap", help="transcript -> species TSV (needed with --salmon/--oarfish)")
 ap.add_argument("--title", default="")
 ap.add_argument("--tsv", required=True)
 ap.add_argument("--plot", required=True, help="output prefix; writes .pdf and .png")
@@ -39,15 +40,24 @@ df["pct_" + B + "_of_mapped"] = 100 * df[B] / df["mapped"]
 df["ratio_" + B + "_" + A] = [ratio(x, y) for x, y in zip(df[B], df[A])]
 df["ratio_uniq_" + B + "_" + A] = [ratio(x, y) for x, y in zip(df["uniq_" + B], df["uniq_" + A])]
 
-if args.salmon:
+# EM-based estimates: reads per species summed over each quantifier's transcript counts.
+# quantifier name -> (files, transcript column, read-count column)
+EM_TOOLS = {
+    "salmon": (args.salmon, "Name", "NumReads"),
+    "oarfish": (args.oarfish, "tname", "num_reads"),
+}
+EM_USED = [tool for tool, (files, *_) in EM_TOOLS.items() if files]
+if EM_USED:
     txmap = pd.read_csv(args.txmap, sep="\t", header=None, names=["Name", "species"], index_col=0)["species"]
-    sal = {}
-    for s, f in zip(df["sample"], args.salmon):
-        q = pd.read_csv(f, sep="\t", usecols=["Name", "NumReads"])
-        sal[s] = q.groupby(q["Name"].map(txmap))["NumReads"].sum()
-    df["salmon_" + A] = [sal[s].get(A, 0.0) for s in df["sample"]]
-    df["salmon_" + B] = [sal[s].get(B, 0.0) for s in df["sample"]]
-    df["ratio_salmon_" + B + "_" + A] = [ratio(x, y) for x, y in zip(df["salmon_" + B], df["salmon_" + A])]
+for tool in EM_USED:
+    files, name_col, count_col = EM_TOOLS[tool]
+    per_sample = {}
+    for s, f in zip(df["sample"], files):
+        q = pd.read_csv(f, sep="\t", usecols=[name_col, count_col])
+        per_sample[s] = q.groupby(q[name_col].map(txmap))[count_col].sum()
+    df[f"{tool}_{A}"] = [per_sample[s].get(A, 0.0) for s in df["sample"]]
+    df[f"{tool}_{B}"] = [per_sample[s].get(B, 0.0) for s in df["sample"]]
+    df[f"ratio_{tool}_{B}_{A}"] = [ratio(x, y) for x, y in zip(df[f"{tool}_{B}"], df[f"{tool}_{A}"])]
 
 df.to_csv(args.tsv, sep="\t", index=False, float_format="%.6g")
 
@@ -144,10 +154,14 @@ ax.legend(loc="upper left", bbox_to_anchor=(0, LEG_Y), ncol=2, frameon=False, fo
 ax = axes[2]
 est = [("ratio_" + B + "_" + A, "primary alignment", "o", INK)]
 est.append(("ratio_uniq_" + B + "_" + A, "unique only", "o", "none"))
-if args.salmon:
-    est.append(("ratio_salmon_" + B + "_" + A, "salmon (EM)", "D", INK2))
+EM_MARKERS = {"salmon": ("D", INK2), "oarfish": ("s", "none")}
+for tool in EM_USED:
+    m, fc = EM_MARKERS[tool]
+    est.append((f"ratio_{tool}_{B}_{A}", f"{tool} (EM)", m, fc))
 vals = []
-offs = [0.16, 0.0, -0.16][:len(est)] if len(est) == 3 else [0.1, -0.1]
+# spread the estimates of one sample evenly within its row
+spread = 0.12 * (len(est) - 1)
+offs = [spread / 2 - i * spread / (len(est) - 1) for i in range(len(est))]
 for (col, lab, m, fc), off in zip(est, offs):
     lr = [math.log2(r) if r and r > 0 and not math.isnan(r) else float("nan") for r in df[col]]
     vals += [v for v in lr if not math.isnan(v)]
@@ -169,7 +183,7 @@ ax.set_yticks(y, [""] * n)
 ax.set_xlabel(f"log2({B} / {A})   (labels: {B}/{A} ratio)")
 ax.set_title(f"Species ratio {B} : {A}")
 tidy(ax)
-ax.legend(loc="upper left", bbox_to_anchor=(0, LEG_Y), ncol=3, frameon=False, fontsize=8)
+ax.legend(loc="upper left", bbox_to_anchor=(0, LEG_Y), ncol=2 if len(est) > 3 else 3, frameon=False, fontsize=8)
 
 if args.title:
     fig.text(LM / W, 1 - 0.3 / fig_h, args.title, ha="left", va="center", fontsize=11, fontweight="bold")

@@ -1,8 +1,8 @@
 ### QC: read statistics (seqkit), mapping statistics (samtools flagstat) and one MultiQC
-### report over seqkit, flagstat and salmon.
+### report over seqkit, flagstat, salmon and oarfish.
 ### MultiQC names samples from these files: seqkit rows carry the sample name, flagstat files are
 ### named <sample>.<tx|gn> so transcriptome and genome mapping stay apart, salmon uses the
-### counts/<sample>/ directory name.
+### counts/salmon/<sample>/ directory name, oarfish comes in as a custom table (oarfish_mqc.tsv).
 
 QC_TARGETS = [f"{RESULTS}qc/multiqc/multiqc_report.html"]
 
@@ -41,7 +41,8 @@ rule multiqc:
 	input:
 		seqkit = expand(f"{RESULTS}qc/seqkit/{{sample}}.tsv", sample = SAMPLES),
 		flagstat = expand(f"{RESULTS}qc/flagstat/{{sample}}.{{space}}.flagstat", sample = SAMPLES, space = SPACES),
-		salmon = expand(f"{RESULTS}counts/{{sample}}/quant.sf", sample = SAMPLES) if "tx" in SPACES else []
+		salmon = expand(f"{SALMON_DIR}{{sample}}/quant.sf", sample = SAMPLES) if "tx" in SPACES else [],
+		oarfish = [f"{RESULTS}qc/oarfish/oarfish_mqc.tsv"] if "tx" in SPACES else []
 	output:
 		html = f"{RESULTS}qc/multiqc/multiqc_report.html"
 	params:
@@ -54,5 +55,5 @@ rule multiqc:
 		"../envs/qc.yaml"
 	shell:"""
 		multiqc --force --outdir {params.outdir} --filename multiqc_report.html \
-		{input.seqkit} {input.flagstat} {params.salmon} > {log} 2>&1
+		{input.seqkit} {input.flagstat} {params.salmon} {input.oarfish} > {log} 2>&1
 	"""
