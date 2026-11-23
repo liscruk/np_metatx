@@ -113,6 +113,8 @@ rule flairManifest:
 		manifest = f"{RESULTS}flair/reads_manifest.tsv"
 	log:
 		f"{LOGS}flairManifest.log"
+	benchmark:
+		f"{BENCH}flairManifest.tsv"
 	run:
 		with open(output.manifest, "w") as fh:
 			for s, fq in SAMPLES.items():

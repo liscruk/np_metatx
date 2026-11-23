@@ -32,6 +32,8 @@ rule flagstat:
 		f"{RESULTS}qc/flagstat/{{sample}}.{{space}}.flagstat"
 	log:
 		f"{LOGS}flagstat/{{sample}}.{{space}}.log"
+	benchmark:
+		f"{BENCH}flagstat/{{space}}.{{sample}}.tsv"
 	conda:
 		"../envs/mapping.yaml"
 	shell:
@@ -48,12 +50,16 @@ rule multiqc:
 	params:
 		outdir = lambda wildcards, output: os.path.dirname(output.html),
 		# salmon's MultiQC files (aux_info/, lib_format_counts.json) sit next to quant.sf
-		salmon = lambda wildcards, input: " ".join(os.path.dirname(q) for q in input.salmon)
+		salmon = lambda wildcards, input: " ".join(os.path.dirname(q) for q in input.salmon),
+		run_state = RUN_STATE
 	log:
 		f"{LOGS}multiqc.log"
+	benchmark:
+		f"{BENCH}multiqc.tsv"
 	conda:
 		"../envs/qc.yaml"
 	shell:"""
-		multiqc --force --outdir {params.outdir} --filename multiqc_report.html \
+		label=$(awk -F'\\t' '{{print "np_metatx commit " $2 ", run " $1}}' {params.run_state} 2> /dev/null || true)
+		multiqc --force --comment "$label" --outdir {params.outdir} --filename multiqc_report.html \
 		{input.seqkit} {input.flagstat} {params.salmon} {input.oarfish} > {log} 2>&1
 	"""

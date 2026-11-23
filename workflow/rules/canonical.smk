@@ -1,14 +1,15 @@
 ### Canonical branch: competitive mapping against the hybrid transcriptome, quantified in
 ### parallel by salmon and oarfish from the same alignments. Output per quantifier:
-###   counts/salmon/   <sample>/quant.sf, numreads.tsv, tpm.tsv
-###   counts/oarfish/  <sample>.quant (+ .meta_info.json), numreads.tsv, tpm.tsv
+###   counts/salmon/   <sample>/quant.sf, numreads.tsv, tpm.tsv, by_species/
+###   counts/oarfish/  <sample>/<sample>.quant (+ .meta_info.json, .ambig_info.tsv), numreads.tsv, tpm.tsv, by_species/
 
 CANONICAL_TARGETS = [
 	f"{SALMON_DIR}numreads.tsv",
 	f"{SALMON_DIR}tpm.tsv",
 	f"{OARFISH_DIR}numreads.tsv",
 	f"{OARFISH_DIR}tpm.tsv",
-]
+] + expand(f"{RESULTS}counts/{{quant}}/by_species/{{species}}.{{table}}.tsv",
+	quant = ["salmon", "oarfish"], species = SPECIES, table = ["numreads", "tpm"])
 
 ### minimap2 index of the hybrid transcriptome, built once instead of in every mapping job.
 ### The index stores the preset's k-mer settings, so it is built with the same preset (map-ont)
@@ -89,6 +90,8 @@ rule salmonMerge:
 		dirs = lambda wildcards, input: " ".join(os.path.dirname(q) for q in input.quants)
 	log:
 		f"{LOGS}salmonMerge.log"
+	benchmark:
+		f"{BENCH}salmonMerge.tsv"
 	conda:
 		"../envs/salmon.yaml"
 	shell:"""
@@ -106,10 +109,11 @@ rule oarfishQuant:
 	input:
 		bam = f"{RESULTS}bam/tx/{{sample}}.bam"
 	output:
-		quant = f"{OARFISH_DIR}{{sample}}.quant",
-		meta = f"{OARFISH_DIR}{{sample}}.meta_info.json"
+		quant = f"{OARFISH_DIR}{{sample}}/{{sample}}.quant",
+		meta = f"{OARFISH_DIR}{{sample}}/{{sample}}.meta_info.json",
+		ambig = f"{OARFISH_DIR}{{sample}}/{{sample}}.ambig_info.tsv"
 	params:
-		prefix = f"{OARFISH_DIR}{{sample}}"
+		prefix = f"{OARFISH_DIR}{{sample}}/{{sample}}"
 	threads:
 		THREADS
 	log:
@@ -125,8 +129,8 @@ rule oarfishQuant:
 ### and write a MultiQC table from oarfish's meta_info.json (MultiQC has no oarfish module).
 rule oarfishMerge:
 	input:
-		quants = expand(f"{OARFISH_DIR}{{sample}}.quant", sample = SAMPLES),
-		metas = expand(f"{OARFISH_DIR}{{sample}}.meta_info.json", sample = SAMPLES)
+		quants = expand(f"{OARFISH_DIR}{{sample}}/{{sample}}.quant", sample = SAMPLES),
+		metas = expand(f"{OARFISH_DIR}{{sample}}/{{sample}}.meta_info.json", sample = SAMPLES)
 	output:
 		counts = f"{OARFISH_DIR}numreads.tsv",
 		tpm = f"{OARFISH_DIR}tpm.tsv",
@@ -136,9 +140,40 @@ rule oarfishMerge:
 		samples = " ".join(SAMPLES)
 	log:
 		f"{LOGS}oarfishMerge.log"
+	benchmark:
+		f"{BENCH}oarfishMerge.tsv"
 	conda:
 		"../envs/species.yaml"
 	shell:"""
 		python {params.script} --quants {input.quants} --meta {input.metas} --samples {params.samples} \
 			--counts {output.counts} --tpm {output.tpm} --mqc {output.mqc} > {log} 2>&1
+	"""
+
+### Split the merged tables by species. Counts are unchanged; TPM is rescaled to 1e6 within each
+### species so values stay comparable between samples with different host/xeno proportions.
+rule splitBySpecies:
+	input:
+		counts = f"{RESULTS}counts/{{quant}}/numreads.tsv",
+		tpm = f"{RESULTS}counts/{{quant}}/tpm.tsv",
+		txmap = f"{RESULTS}refs/tx2species.{REFNAME}.tsv"
+	output:
+		host_counts = f"{RESULTS}counts/{{quant}}/by_species/{SPECIES[0]}.numreads.tsv",
+		host_tpm = f"{RESULTS}counts/{{quant}}/by_species/{SPECIES[0]}.tpm.tsv",
+		xeno_counts = f"{RESULTS}counts/{{quant}}/by_species/{SPECIES[1]}.numreads.tsv",
+		xeno_tpm = f"{RESULTS}counts/{{quant}}/by_species/{SPECIES[1]}.tpm.tsv"
+	params:
+		script = os.path.join(SCRIPTS, "split_by_species.py"),
+		species = " ".join(SPECIES),
+		outdir = lambda wildcards, output: os.path.dirname(output.host_tpm)
+	wildcard_constraints:
+		quant = "salmon|oarfish"
+	log:
+		f"{LOGS}splitBySpecies/{{quant}}.log"
+	benchmark:
+		f"{BENCH}splitBySpecies_{{quant}}.tsv"
+	conda:
+		"../envs/species.yaml"
+	shell:"""
+		python {params.script} --counts {input.counts} --tpm {input.tpm} --txmap {input.txmap} \
+			--species {params.species} --outdir {params.outdir} > {log} 2>&1
 	"""

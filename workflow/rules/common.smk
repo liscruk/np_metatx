@@ -1,6 +1,10 @@
 ### Shared settings, paths and input checks. Included first by the snakefile.
 
 import gzip
+import json
+import subprocess
+
+from snakemake import __version__ as SNAKEMAKE_VERSION
 
 ### Settings
 RESULTS = config["results"]
@@ -15,6 +19,8 @@ SPACES = (["tx"] if MODE in ("canonical", "both") else []) + (["gn"] if MODE in 
 
 LOGS = f"{RESULTS}logs/"
 BENCH = f"{RESULTS}benchmarks/"
+RUN_INFO = f"{RESULTS}run_info/"
+RUN_STATE = f"{RUN_INFO}.current"
 SCRIPTS = os.path.join(workflow.basedir, "scripts")
 
 ### Source references
@@ -95,3 +101,20 @@ for key in ("hostSeq", "hostTx", "XenoSeq", "XenoTx"):
 	check_fasta(key)
 for key in ("hostGtf", "XenoGtf"):
 	check_gtf(key)
+
+
+### Run tracking helpers, called from the handlers in tracking.smk
+
+def _track(script, args, stdin = None):
+	# Tracking problems are reported but must never fail an analysis run.
+	# -B: no __pycache__, which would make the workflow directory look modified.
+	try:
+		subprocess.run([sys.executable, "-B", os.path.join(SCRIPTS, script)] + args,
+			input = stdin, text = True, check = True)
+	except (OSError, subprocess.SubprocessError) as err:
+		print(f"WARNING: run tracking failed ({script}): {err}", file = sys.stderr)
+
+
+def _finish_run(status):
+	_track("aggregate_benchmarks.py", ["--bench", BENCH, "--state", RUN_STATE])
+	_track("run_info.py", ["finish", "--dir", RUN_INFO, "--status", status])

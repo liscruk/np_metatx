@@ -20,6 +20,8 @@ rule txSpeciesMap:
 		xs = SPECIES[1]
 	log:
 		f"{LOGS}txSpeciesMap.log"
+	benchmark:
+		f"{BENCH}txSpeciesMap.tsv"
 	conda:
 		"../envs/species.yaml"
 	shell:"""
@@ -38,6 +40,8 @@ rule gnSpeciesMap:
 		xs = SPECIES[1]
 	log:
 		f"{LOGS}gnSpeciesMap.log"
+	benchmark:
+		f"{BENCH}gnSpeciesMap.tsv"
 	conda:
 		"../envs/species.yaml"
 	shell:"""
@@ -83,7 +87,7 @@ rule speciesSummary:
 	input:
 		counts = expand(f"{RESULTS}species/{{space}}/{{sample}}.counts.tsv", sample = SAMPLES, allow_missing = True),
 		salmon = lambda w: expand(f"{SALMON_DIR}{{sample}}/quant.sf", sample = SAMPLES) if w.space == "tx" else [],
-		oarfish = lambda w: expand(f"{OARFISH_DIR}{{sample}}.quant", sample = SAMPLES) if w.space == "tx" else [],
+		oarfish = lambda w: expand(f"{OARFISH_DIR}{{sample}}/{{sample}}.quant", sample = SAMPLES) if w.space == "tx" else [],
 		txmap = lambda w: f"{RESULTS}refs/tx2species.{REFNAME}.tsv" if w.space == "tx" else []
 	output:
 		tsv = f"{RESULTS}species/{{space}}/species_summary.tsv",
@@ -98,6 +102,8 @@ rule speciesSummary:
 		prefix = f"{RESULTS}species/{{space}}/species_composition"
 	log:
 		f"{LOGS}speciesSummary/{{space}}.log"
+	benchmark:
+		f"{BENCH}speciesSummary.{{space}}.tsv"
 	conda:
 		"../envs/species.yaml"
 	shell:"""

@@ -30,6 +30,7 @@ workflow/rules/canonical.smk   canonical branch: transcriptome mapping + salmon 
 workflow/rules/novel.smk       novel branch: spliced genomic mapping + FLAIR isoform discovery/quantification
 workflow/rules/species.smk     reads per species + species ratio, table and plots
 workflow/rules/qc.smk          seqkit read stats, samtools flagstat, MultiQC report
+workflow/rules/tracking.smk    records commit/config per run, aggregates benchmarks
 workflow/schemas/              JSON schema for the config
 workflow/scripts/              helper scripts (species counting / summary plots)
 workflow/envs/*.yaml           conda environments (mapping, salmon, oarfish, flair, species, qc)
@@ -72,9 +73,11 @@ bam/tx/<sample>.bam                    transcriptome alignments
 counts/salmon/<sample>/quant.sf        per-sample salmon quantification
 counts/salmon/numreads.tsv             merged estimated read counts (use for DE)
 counts/salmon/tpm.tsv                  merged TPM
-counts/oarfish/<sample>.quant          per-sample oarfish quantification (+ .meta_info.json, .ambig_info.tsv)
+counts/oarfish/<sample>/<sample>.quant per-sample oarfish quantification (+ .meta_info.json, .ambig_info.tsv)
 counts/oarfish/numreads.tsv            merged estimated read counts
 counts/oarfish/tpm.tsv                 merged TPM (computed from oarfish counts and transcript lengths)
+counts/<salmon|oarfish>/by_species/<species>.numreads.tsv  read counts for one species (values unchanged)
+counts/<salmon|oarfish>/by_species/<species>.tpm.tsv       TPM rescaled to sum to 1e6 within that species
 
 # Novel
 bam/gn/<sample>.bam(.bai)              spliced genome alignments
@@ -96,8 +99,18 @@ qc/multiqc/multiqc_report.html         MultiQC report over seqkit, flagstat, sal
 
 # Run information
 logs/<rule>/...                        stderr/stdout of every job
-benchmarks/<rule>/...                  runtime and memory of the heavier jobs
+benchmarks/benchmarks.tsv              runtime and memory per job, with the run and commit that last built it
+run_info/runs.tsv                      one row per run: commit, branch, dirty, config, status, times
+run_info/config.<hash>.yml             exact resolved config used by a run
+run_info/<run_id>.patch                uncommitted workflow changes, only for runs marked dirty
 ```
+
+### Which commit produced a result?
+
+`run_info/runs.tsv` lists every run. Because a rerun may rebuild only some steps, check the `commit` column of
+`benchmarks/benchmarks.tsv` for the commit that last built a given step. `-dirty` means the code had uncommitted
+changes, saved in `run_info/<run_id>.patch`. `unknown` means the job predates tracking or ran outside a git checkout.
+The commit is also shown in the MultiQC report header. A new commit alone does not trigger reruns.
 
 ## License
 

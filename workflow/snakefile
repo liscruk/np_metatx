@@ -40,6 +40,9 @@ TARGETS += SPECIES_TARGETS
 include: "rules/qc.smk"
 TARGETS += QC_TARGETS
 
+# Commit/config record per run and the aggregated benchmark table
+include: "rules/tracking.smk"
+
 
 # Prep output with rule all
 rule all:
