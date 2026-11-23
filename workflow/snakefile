@@ -10,6 +10,11 @@ from snakemake.utils import validate
 if any(k in config for k in ("hg38Seq", "hg38Gtf", "hg38Tx")):
 	sys.exit("Config keys hg38Seq/hg38Gtf/hg38Tx were renamed to hostSeq/hostGtf/hostTx. Please update your config.")
 
+# An empty samples block usually means the sample lines are not indented below 'samples:'
+if "samples" in config and not config["samples"]:
+	sys.exit("Config 'samples' is empty. List each sample on its own line, indented below 'samples:', e.g.\n"
+		"samples:\n  sample1: \"reads/sample1.fq.gz\"")
+
 # Checks keys and types and fills defaults (threads, mode)
 validate(config, "schemas/config.schema.yaml")
 

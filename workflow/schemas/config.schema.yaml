@@ -1,4 +1,5 @@
-$schema: "http://json-schema.org/draft-07/schema#"
+# Snakemake validates with JSON Schema 2020-12 and warns about any other version identifier
+$schema: "https://json-schema.org/draft/2020-12/schema"
 description: np_metatx run configuration (see config/config.default.yml)
 type: object
 
