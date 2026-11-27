@@ -170,7 +170,8 @@ rule splitBySpecies:
 	log:
 		f"{LOGS}splitBySpecies/{{quant}}.log"
 	benchmark:
-		f"{BENCH}splitBySpecies_{{quant}}.tsv"
+		# <rule>/<x>.tsv layout, so benchmarks.tsv lists rule splitBySpecies with the quantifier as sample
+		f"{BENCH}splitBySpecies/{{quant}}.tsv"
 	conda:
 		"../envs/species.yaml"
 	shell:"""

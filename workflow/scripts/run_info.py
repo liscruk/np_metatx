@@ -4,7 +4,10 @@
   runs.tsv            one row per run
   config.<hash>.yml   the resolved config (run configs are not in git), stored once per version
   <run_id>.patch      uncommitted changes under workflow/, only when there are any
-  .current            the active run; read by the benchmark table and the MultiQC header
+  .current            the active run; read by the MultiQC header
+
+Start and end times come from the clock of the file system holding the results, the same clock
+that stamps the benchmark files, so aggregate_benchmarks.py can tell which run wrote each job.
 """
 import argparse
 import csv
@@ -19,6 +22,7 @@ import time
 import yaml
 
 COLUMNS = ["run_id", "started", "finished", "status", "commit", "branch", "dirty", "config", "snakemake", "mode"]
+TIME_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def git(repo, *args):
@@ -92,13 +96,33 @@ def write_runs(path, rows):
     os.replace(tmp, path)
 
 
-def now():
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+def fs_now(directory):
+    """Current time on the file system of `directory`.
+
+    On a cluster, job files are time-stamped by the file server, whose clock can differ from the
+    node running Snakemake. Falls back to the local clock if the probe file cannot be written.
+    """
+    probe = os.path.join(directory, f".clock.{os.getpid()}")
+    try:
+        with open(probe, "w"):
+            pass
+        return os.stat(probe).st_mtime
+    except OSError:
+        return time.time()
+    finally:
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+
+
+def fmt(t):
+    return time.strftime(TIME_FORMAT, time.localtime(t))
 
 
 def start(args):
     os.makedirs(args.dir, exist_ok=True)
-    started = time.time()
+    started = fs_now(args.dir)
     run_id = f"{time.strftime('%Y%m%dT%H%M%S', time.localtime(started))}-{secrets.token_hex(2)}"
     commit, branch, dirty = code_version(args.repo, args.dir, run_id)
     config_name = store_config(args.dir, json.load(sys.stdin))
@@ -109,7 +133,7 @@ def start(args):
     for row in rows:
         if row["status"] == "running":
             row["status"] = "interrupted"
-    rows.append(dict(zip(COLUMNS, [run_id, now(), "", "running", commit, branch, dirty,
+    rows.append(dict(zip(COLUMNS, [run_id, fmt(started), "", "running", commit, branch, dirty,
                                    config_name, args.snakemake, args.mode])))
     write_runs(runs_path, rows)
     with open(os.path.join(args.dir, ".current"), "w") as fh:
@@ -126,7 +150,7 @@ def finish(args):
     rows = read_runs(runs_path)
     for row in rows:
         if row["run_id"] == run_id:
-            row.update(finished=now(), status=args.status)
+            row.update(finished=fmt(fs_now(args.dir)), status=args.status)
     write_runs(runs_path, rows)
     os.remove(state)
 

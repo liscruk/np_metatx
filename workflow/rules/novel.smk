@@ -111,16 +111,19 @@ rule flairTranscriptome:
 rule flairManifest:
 	output:
 		manifest = f"{RESULTS}flair/reads_manifest.tsv"
+	params:
+		# As a param, a changed sample list or reads path makes Snakemake rebuild the manifest
+		samples = SAMPLES
 	log:
 		f"{LOGS}flairManifest.log"
 	benchmark:
 		f"{BENCH}flairManifest.tsv"
 	run:
 		with open(output.manifest, "w") as fh:
-			for s, fq in SAMPLES.items():
+			for s, fq in params.samples.items():
 				fh.write(f"{s}\tcond\tbatch1\t{fq}\n")
 		with open(log[0], "w") as fh:
-			fh.write(f"Wrote {len(SAMPLES)} samples to {output.manifest}\n")
+			fh.write(f"Wrote {len(params.samples)} samples to {output.manifest}\n")
 
 ### Quantify each sample against the common isoform set
 rule flairQuantify:

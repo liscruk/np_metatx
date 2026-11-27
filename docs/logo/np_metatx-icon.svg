@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="title">
+  <title id="title">np_metatx</title>
+  <defs>
+    <clipPath id="badge">
+      <circle cx="64" cy="64" r="60"/>
+    </clipPath>
+  </defs>
+
+  <!-- badge -->
+  <circle cx="64" cy="64" r="60" fill="#0B4F5C"/>
+  <circle cx="64" cy="64" r="59" fill="none" stroke="#7FD1C7" stroke-opacity="0.35" stroke-width="2"/>
+
+  <!-- membrane (two lipid layers) with the nanopore in the middle -->
+  <g clip-path="url(#badge)" fill="#7FD1C7">
+    <rect x="-4" y="52" width="56" height="9" rx="4.5"/>
+    <rect x="76" y="52" width="56" height="9" rx="4.5"/>
+    <rect x="-4" y="65" width="56" height="9" rx="4.5" fill-opacity="0.55"/>
+    <rect x="76" y="65" width="56" height="9" rx="4.5" fill-opacity="0.55"/>
+  </g>
+  <rect x="46" y="46" width="10" height="34" rx="5" fill="#E8F6F3"/>
+  <rect x="72" y="46" width="10" height="34" rx="5" fill="#E8F6F3"/>
+
+  <!-- a read passes through the pore ... -->
+  <path d="M64 16 C53 21 53 26 64 30 C75 34 75 39 64 43 L64 82"
+        fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- ... and is assigned to the host or the xeno species -->
+  <path d="M64 82 C64 96 42 96 37 110"
+        fill="none" stroke="#FF7A66" stroke-width="6" stroke-linecap="round"/>
+  <path d="M64 82 C64 96 86 96 91 110"
+        fill="none" stroke="#FFC857" stroke-width="6" stroke-linecap="round"/>
+</svg>

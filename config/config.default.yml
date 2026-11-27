@@ -12,7 +12,7 @@ threads: 8
 species: ["hs", "mm"]
 
 # Run mode:
-#   Canonical - hybrid transcriptome, competitive mapping, salmon quantification
+#   Canonical - hybrid transcriptome, competitive mapping, salmon + oarfish quantification
 #   Novel     - spliced genomic mapping + FLAIR isoform discovery
 #   Both      - both of the above
 mode: "Canonical"

@@ -59,7 +59,7 @@ rule multiqc:
 	conda:
 		"../envs/qc.yaml"
 	shell:"""
-		label=$(awk -F'\\t' '{{print "np_metatx commit " $2 ", run " $1}}' {params.run_state} 2> /dev/null || true)
+		label=$(awk -F'\\t' '{{print "np_metatx: report built by run " $1 " (commit " $2 ")"}}' {params.run_state} 2> /dev/null || true)
 		multiqc --force --comment "$label" --outdir {params.outdir} --filename multiqc_report.html \
 		{input.seqkit} {input.flagstat} {params.salmon} {input.oarfish} > {log} 2>&1
 	"""

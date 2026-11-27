@@ -116,5 +116,5 @@ def _track(script, args, stdin = None):
 
 
 def _finish_run(status):
-	_track("aggregate_benchmarks.py", ["--bench", BENCH, "--state", RUN_STATE])
+	_track("aggregate_benchmarks.py", ["--bench", BENCH, "--runs", f"{RUN_INFO}runs.tsv"])
 	_track("run_info.py", ["finish", "--dir", RUN_INFO, "--status", status])
